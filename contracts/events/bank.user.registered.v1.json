@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/BarcikGG/bank-api/main/contracts/events/bank.user.registered.v1.json",
+  "title": "Bank User Registered v1",
+  "description": "Событие регистрации пользователя, публикуемое сервисом bank-api в топик bank.events.v1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "type",
+    "version",
+    "producer",
+    "aggregate_type",
+    "aggregate_id",
+    "occurred_at",
+    "data"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Уникальный идентификатор события."
+    },
+    "type": {
+      "const": "bank.user.registered"
+    },
+    "version": {
+      "const": 1
+    },
+    "producer": {
+      "const": "bank-api"
+    },
+    "aggregate_type": {
+      "const": "user"
+    },
+    "aggregate_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Идентификатор зарегистрированного пользователя."
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "correlation_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "user_id",
+        "email",
+        "name"
+      ],
+      "properties": {
+        "user_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "email": {
+          "type": "string",
+          "format": "email"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "id": "0f7f2d42-2172-4e61-9f81-fba012b179e1",
+      "type": "bank.user.registered",
+      "version": 1,
+      "producer": "bank-api",
+      "aggregate_type": "user",
+      "aggregate_id": "8138fa40-a861-40a7-a49b-da4b1117e242",
+      "occurred_at": "2026-09-09T12:00:00Z",
+      "correlation_id": "request-26f989e1",
+      "data": {
+        "user_id": "8138fa40-a861-40a7-a49b-da4b1117e242",
+        "email": "user@example.com",
+        "name": "Иван"
+      }
+    }
+  ]
+}
