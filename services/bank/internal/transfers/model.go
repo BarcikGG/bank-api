@@ -12,8 +12,8 @@ const (
 
 type Transfer struct {
 	ID        string        `gorm:"type:uuid;default:gen_random_uuid();primaryKey"`
-	FromAccID *string       `gorm:"type:uuid;default:null"`
-	ToAccID   *string       `gorm:"type:uuid;default:null"`
+	FromAccID *string       `gorm:"type:uuid;default:null;index"`
+	ToAccID   *string       `gorm:"type:uuid;default:null;index"`
 	Type      OperationType `gorm:"size:20;not null"`
 	Currency  string        `gorm:"size:3;not null"`
 	Amount    int64         `gorm:"type:bigint;not null"`

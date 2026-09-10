@@ -6,6 +6,7 @@ import (
 
 	"bank/internal/accounts"
 	"bank/internal/auth"
+	"bank/internal/transfers"
 	"bank/internal/users"
 
 	"github.com/labstack/echo/v5"
@@ -48,6 +49,8 @@ func mapHTTPError(err error) (int, string) {
 		return http.StatusBadRequest, accounts.ErrInvalidID.Error()
 	case errors.Is(err, accounts.ErrInvalidAmount):
 		return http.StatusBadRequest, accounts.ErrInvalidAmount.Error()
+	case errors.Is(err, transfers.ErrInvalidUserID):
+		return http.StatusBadRequest, transfers.ErrInvalidUserID.Error()
 	case errors.Is(err, accounts.ErrUnsupportedCur):
 		return http.StatusBadRequest, accounts.ErrUnsupportedCur.Error()
 	case errors.Is(err, accounts.ErrNotEnoughMoney):
@@ -60,6 +63,8 @@ func mapHTTPError(err error) (int, string) {
 		return http.StatusNotFound, users.ErrNotFound.Error()
 	case errors.Is(err, accounts.ErrNotFound):
 		return http.StatusNotFound, accounts.ErrNotFound.Error()
+	case errors.Is(err, transfers.ErrNotFound):
+		return http.StatusNotFound, transfers.ErrNotFound.Error()
 
 	case errors.Is(err, users.ErrInvalidCredentials):
 		return http.StatusUnauthorized, users.ErrInvalidCredentials.Error()

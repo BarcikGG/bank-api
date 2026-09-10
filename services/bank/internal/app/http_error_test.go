@@ -8,6 +8,7 @@ import (
 
 	"bank/internal/accounts"
 	"bank/internal/auth"
+	"bank/internal/transfers"
 	"bank/internal/users"
 
 	"github.com/labstack/echo/v5"
@@ -33,6 +34,12 @@ func TestMapHTTPError(t *testing.T) {
 			err:         fmt.Errorf("find account: %w", accounts.ErrNotFound),
 			wantStatus:  http.StatusNotFound,
 			wantMessage: accounts.ErrNotFound.Error(),
+		},
+		{
+			name:        "wrapped transfer not found",
+			err:         fmt.Errorf("find transfer: %w", transfers.ErrNotFound),
+			wantStatus:  http.StatusNotFound,
+			wantMessage: transfers.ErrNotFound.Error(),
 		},
 		{
 			name:        "invalid refresh token",

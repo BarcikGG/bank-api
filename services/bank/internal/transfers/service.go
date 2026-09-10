@@ -3,6 +3,7 @@ package transfers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"gorm.io/gorm"
@@ -27,15 +28,14 @@ func (s *Service) GetTransferHistory(ctx context.Context, userID string) ([]Tran
 		return nil, ErrInvalidUserID
 	}
 
-	var transfers []Transfer
-	err := s.db.WithContext(ctx).Where("user_id = ?", userID).Find(&transfers).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrNotFound
+	transfers := make([]Transfer, 0)
+	err := s.forUser(ctx, userID).
+		Order("transfers.created_at DESC").
+		Find(&transfers).Error
+	if err != nil {
+		return nil, fmt.Errorf("get transfer history: %w", err)
 	}
 
-	if err != nil {
-		return nil, err
-	}
 	return transfers, nil
 }
 
@@ -45,13 +45,33 @@ func (s *Service) GetTransferHistoryByID(ctx context.Context, userID string, tra
 	}
 
 	var transfer Transfer
-	err := s.db.WithContext(ctx).Where("user_id = ?", userID).Where("id = ?", transferID).First(&transfer).Error
+	err := s.forUser(ctx, userID).
+		Where("transfers.id = ?", transferID).
+		First(&transfer).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return Transfer{}, ErrNotFound
 	}
 
 	if err != nil {
-		return Transfer{}, err
+		return Transfer{}, fmt.Errorf("get transfer by ID: %w", err)
 	}
+
 	return transfer, nil
+}
+
+func (s *Service) forUser(ctx context.Context, userID string) *gorm.DB {
+	return s.db.WithContext(ctx).
+		Model(&Transfer{}).
+		Where(
+			`EXISTS (
+				SELECT 1
+				FROM accounts
+				WHERE accounts.user_id = ?
+				AND (
+					accounts.id = transfers.from_acc_id
+					OR accounts.id = transfers.to_acc_id
+				)
+			)`,
+			userID,
+		)
 }
