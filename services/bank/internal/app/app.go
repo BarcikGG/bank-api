@@ -4,7 +4,6 @@ import (
 	"bank/internal/accounts"
 	"bank/internal/auth"
 	"bank/internal/config"
-	"bank/internal/outbox"
 	"bank/internal/storage/postgres"
 	"bank/internal/transfers"
 	"bank/internal/users"
@@ -40,15 +39,18 @@ func New(cfg *config.Config, slogger *slog.Logger) (*App, error) {
 	}
 
 	tokenManager := auth.NewManager(cfg.JWTSecret, cfg.JWTTTL, "bank-api", "bank-client")
-	authService := auth.NewService(storage.DB, tokenManager, cfg.RefreshTTL, slogger)
-	eventWriter := outbox.Writer{}
-	userService := users.NewService(storage.DB, slogger, eventWriter)
+	authRepository := auth.NewRepository(storage.DB)
+	authService := auth.NewService(authRepository, tokenManager, cfg.RefreshTTL, slogger)
+	userRepository := users.NewRepository(storage.DB)
+	userService := users.NewService(userRepository, slogger)
 	userHandler := users.NewHandler(userService, authService)
 
-	accountService := accounts.NewService(storage.DB, slogger)
+	accountRepository := accounts.NewRepository(storage.DB)
+	accountService := accounts.NewService(accountRepository, slogger)
 	accountHandler := accounts.NewHandler(accountService)
 
-	transferService := transfers.NewService(storage.DB, slogger)
+	transferRepository := transfers.NewRepository(storage.DB)
+	transferService := transfers.NewService(transferRepository, slogger)
 	transferHandler := transfers.NewHandler(transferService)
 
 	requireAuth := tokenManager.Middleware(auth.AccessCookieName)

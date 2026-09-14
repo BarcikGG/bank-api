@@ -6,9 +6,6 @@ import (
 	"fmt"
 	"notifications/internal/notifications"
 	"time"
-
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 type Message struct {
@@ -23,14 +20,18 @@ type EventHandler interface {
 	Build(event Envelope) ([]notifications.Notification, error)
 }
 
-type Processor struct {
-	db       *gorm.DB
-	handlers map[string]EventHandler
+type Repository interface {
+	Save(ctx context.Context, event notifications.ProcessedEvent, jobs []notifications.Notification) error
 }
 
-func NewProcessor(db *gorm.DB, handlers ...EventHandler) (*Processor, error) {
-	if db == nil {
-		return nil, errors.New("processor database is nil")
+type Processor struct {
+	repository Repository
+	handlers   map[string]EventHandler
+}
+
+func NewProcessor(repository Repository, handlers ...EventHandler) (*Processor, error) {
+	if repository == nil {
+		return nil, errors.New("event repository is nil")
 	}
 
 	registry := make(map[string]EventHandler, len(handlers))
@@ -45,7 +46,7 @@ func NewProcessor(db *gorm.DB, handlers ...EventHandler) (*Processor, error) {
 		registry[eventType] = handler
 	}
 
-	return &Processor{db: db, handlers: registry}, nil
+	return &Processor{repository: repository, handlers: registry}, nil
 }
 
 func (p *Processor) Process(ctx context.Context, message Message) error {
@@ -59,36 +60,15 @@ func (p *Processor) Process(ctx context.Context, message Message) error {
 		return fmt.Errorf("build notification jobs: %w", err)
 	}
 
-	return p.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		inbox := notifications.ProcessedEvent{
-			EventID:        message.Event.ID,
-			EventType:      message.Event.Type,
-			EventVersion:   message.Event.Version,
-			KafkaTopic:     message.Topic,
-			KafkaPartition: message.Partition,
-			KafkaOffset:    message.Offset,
-			ProcessedAt:    time.Now().UTC(),
-		}
+	inbox := notifications.ProcessedEvent{
+		EventID:        message.Event.ID,
+		EventType:      message.Event.Type,
+		EventVersion:   message.Event.Version,
+		KafkaTopic:     message.Topic,
+		KafkaPartition: message.Partition,
+		KafkaOffset:    message.Offset,
+		ProcessedAt:    time.Now().UTC(),
+	}
 
-		result := tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "event_id"}},
-			DoNothing: true,
-		}).Create(&inbox)
-		if result.Error != nil {
-			return fmt.Errorf("insert processed event: %w", result.Error)
-		}
-		if result.RowsAffected == 0 {
-			return nil
-		}
-
-		if len(jobs) == 0 {
-			return nil
-		}
-
-		if err := tx.Create(&jobs).Error; err != nil {
-			return fmt.Errorf("insert notification jobs: %w", err)
-		}
-
-		return nil
-	})
+	return p.repository.Save(ctx, inbox, jobs)
 }

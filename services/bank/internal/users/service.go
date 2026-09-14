@@ -15,17 +15,23 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/datatypes"
-	"gorm.io/gorm"
 )
 
-type EventWriter interface {
-	Add(tx *gorm.DB, event *outbox.Event) error
+type Repository interface {
+	Transaction(ctx context.Context, fn func(RegistrationRepository) error) error
+	FindByEmail(ctx context.Context, email string) (*User, error)
+	FindByID(ctx context.Context, id string) (*User, error)
+}
+
+type RegistrationRepository interface {
+	CreateUser(user *User) error
+	CreateAccount(account *accounts.Account) error
+	AddEvent(event *outbox.Event) error
 }
 
 type Service struct {
-	db          *gorm.DB
-	logger      *slog.Logger
-	eventWriter EventWriter
+	repository Repository
+	logger     *slog.Logger
 }
 
 var (
@@ -47,8 +53,8 @@ type LoginInput struct {
 	Password string
 }
 
-func NewService(db *gorm.DB, logger *slog.Logger, eventWriter EventWriter) *Service {
-	return &Service{db: db, logger: logger.With(slog.String("component", "users_service")), eventWriter: eventWriter}
+func NewService(repository Repository, logger *slog.Logger) *Service {
+	return &Service{repository: repository, logger: logger.With(slog.String("component", "users_service"))}
 }
 
 func (s *Service) Register(ctx context.Context, input CreateInput) (*User, error) {
@@ -72,13 +78,9 @@ func (s *Service) Register(ctx context.Context, input CreateInput) (*User, error
 		Password: hashedPassword,
 	}
 
-	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&user).Error; err != nil {
-			if errors.Is(err, gorm.ErrDuplicatedKey) {
-				return ErrEmailTaken
-			}
-
-			return fmt.Errorf("create user: %w", err)
+	err = s.repository.Transaction(ctx, func(repository RegistrationRepository) error {
+		if err := repository.CreateUser(&user); err != nil {
+			return err
 		}
 
 		account := accounts.Account{
@@ -86,9 +88,8 @@ func (s *Service) Register(ctx context.Context, input CreateInput) (*User, error
 			Balance:  0,
 			Currency: "RUB",
 		}
-
-		if err := tx.Create(&account).Error; err != nil {
-			return fmt.Errorf("create account: %w", err)
+		if err := repository.CreateAccount(&account); err != nil {
+			return err
 		}
 
 		data, err := json.Marshal(outbox.UserRegisteredV1{
@@ -113,11 +114,7 @@ func (s *Service) Register(ctx context.Context, input CreateInput) (*User, error
 			AvailableAt:   now,
 		}
 
-		if err := s.eventWriter.Add(tx, &event); err != nil {
-			return fmt.Errorf("add registration event: %w", err)
-		}
-
-		return nil
+		return repository.AddEvent(&event)
 	})
 
 	if err != nil {
@@ -141,11 +138,8 @@ func (s *Service) Login(ctx context.Context, input LoginInput) (*User, error) {
 		return nil, ErrInvalidCredentials
 	}
 
-	var user User
-
-	err := s.db.WithContext(ctx).Where("email = ?", email).First(&user).Error
-
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	user, err := s.repository.FindByEmail(ctx, email)
+	if errors.Is(err, ErrNotFound) {
 		return nil, ErrInvalidCredentials
 	}
 	if err != nil {
@@ -156,7 +150,7 @@ func (s *Service) Login(ctx context.Context, input LoginInput) (*User, error) {
 		return nil, ErrInvalidCredentials
 	}
 
-	return &user, nil
+	return user, nil
 }
 
 func (s *Service) GetByID(ctx context.Context, id string) (*User, error) {
@@ -164,17 +158,15 @@ func (s *Service) GetByID(ctx context.Context, id string) (*User, error) {
 		return nil, ErrInvalidID
 	}
 
-	var user User
-
-	err := s.db.WithContext(ctx).Where("id = ?", id).First(&user).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	user, err := s.repository.FindByID(ctx, id)
+	if errors.Is(err, ErrNotFound) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("can't get user by id: %w", err)
 	}
 
-	return &user, nil
+	return user, nil
 }
 
 func hashPassword(password string) (string, error) {

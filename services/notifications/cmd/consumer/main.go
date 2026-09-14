@@ -40,8 +40,9 @@ func run(ctx context.Context, cfg *config.Config, logger *slog.Logger) error {
 	}
 	defer storage.Close()
 
+	eventRepository := appevents.NewRepository(storage.DB)
 	processor, err := appevents.NewProcessor(
-		storage.DB,
+		eventRepository,
 		appevents.UserRegisteredHandler{},
 	)
 	if err != nil {

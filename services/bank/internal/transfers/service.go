@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-
-	"gorm.io/gorm"
 )
 
 var (
@@ -15,12 +13,12 @@ var (
 )
 
 type Service struct {
-	db     *gorm.DB
-	logger *slog.Logger
+	repository Repository
+	logger     *slog.Logger
 }
 
-func NewService(db *gorm.DB, logger *slog.Logger) *Service {
-	return &Service{db: db, logger: logger}
+func NewService(repository Repository, logger *slog.Logger) *Service {
+	return &Service{repository: repository, logger: logger}
 }
 
 func (s *Service) GetTransferHistory(ctx context.Context, userID string) ([]Transfer, error) {
@@ -28,10 +26,7 @@ func (s *Service) GetTransferHistory(ctx context.Context, userID string) ([]Tran
 		return nil, ErrInvalidUserID
 	}
 
-	transfers := make([]Transfer, 0)
-	err := s.forUser(ctx, userID).
-		Order("transfers.created_at DESC").
-		Find(&transfers).Error
+	transfers, err := s.repository.FindByUserID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get transfer history: %w", err)
 	}
@@ -44,11 +39,8 @@ func (s *Service) GetTransferHistoryByID(ctx context.Context, userID string, tra
 		return Transfer{}, ErrInvalidUserID
 	}
 
-	var transfer Transfer
-	err := s.forUser(ctx, userID).
-		Where("transfers.id = ?", transferID).
-		First(&transfer).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	transfer, err := s.repository.FindByIDAndUserID(ctx, transferID, userID)
+	if errors.Is(err, ErrNotFound) {
 		return Transfer{}, ErrNotFound
 	}
 
@@ -56,22 +48,5 @@ func (s *Service) GetTransferHistoryByID(ctx context.Context, userID string, tra
 		return Transfer{}, fmt.Errorf("get transfer by ID: %w", err)
 	}
 
-	return transfer, nil
-}
-
-func (s *Service) forUser(ctx context.Context, userID string) *gorm.DB {
-	return s.db.WithContext(ctx).
-		Model(&Transfer{}).
-		Where(
-			`EXISTS (
-				SELECT 1
-				FROM accounts
-				WHERE accounts.user_id = ?
-				AND (
-					accounts.id = transfers.from_acc_id
-					OR accounts.id = transfers.to_acc_id
-				)
-			)`,
-			userID,
-		)
+	return *transfer, nil
 }
